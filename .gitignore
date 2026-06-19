@@ -1,0 +1,27 @@
+# --- Python & Virtual Environments ---
+.venv/
+venv/
+ENV/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Environment Variables / Sensitive Data ---
+.env
+.flaskenv
+instance/
+
+# --- macOS System Files ---
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- IDE / Editor Files ---
+.vscode/
+.idea/
+
+# --- Database / Redis (If you ever save local dumps here) ---
+*.dump
+*.sql
+dump.rdb

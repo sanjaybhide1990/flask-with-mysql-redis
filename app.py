@@ -1,12 +1,22 @@
 import time
-from flask import Flask, jsonify
-from flask_sqlalchemy import SQLAlchemy
 import redis
 import json
+import os
+from flask import Flask, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from dotenv import load_dotenv
+
 
 app = Flask(__name__)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Password123@localhost/users'
+load_dotenv()
+
+DB_USER = os.environ.get("DB_USERNAME")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
+DB_HOSTNAME = os.environ.get("DB_HOST")
+DB_DATABASE_NAME = os.environ.get("DB_NAME")
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOSTNAME}/{DB_DATABASE_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)

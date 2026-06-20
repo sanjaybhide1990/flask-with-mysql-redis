@@ -1,4 +1,3 @@
-import time
 import redis
 import json
 import os
@@ -13,7 +12,7 @@ load_dotenv()
 
 DB_USER = os.environ.get("DB_USERNAME")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
-DB_HOSTNAME = os.environ.get("DB_HOST")
+DB_HOSTNAME = os.environ.get("DB_HOST",os.environ.get("DB_HOST_LOCAL","localhost"))
 DB_DATABASE_NAME = os.environ.get("DB_NAME")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOSTNAME}/{DB_DATABASE_NAME}'
@@ -21,7 +20,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-redis_client = redis.Redis(host='localhost',port=6379,decode_responses=True)
+REDIS_HOST = os.environ.get("REDIS_HOST","localhost")
+redis_client = redis.Redis(host=REDIS_HOST,port=6379,decode_responses=True)
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -70,4 +70,4 @@ def add_dummy_user():
     return "Data already exists"
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0',port=5000,debug=True)

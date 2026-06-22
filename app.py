@@ -36,6 +36,10 @@ class User(db.Model):
 with app.app_context():
     db.create_all()
 
+@app.route('/health')
+def health_check():
+    return {"status":"Server is up and running"}, 200
+
 @app.route('/user/<int:user_id>',methods= ["GET"])
 def get_user(user_id):
     cache_key = f"user:{user_id}"

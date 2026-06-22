@@ -43,11 +43,11 @@ jobs:
         run: | 
           docker run -d --name flask-test \
           --network host \
-          -e DB_USERNAME=root \ 
+          -e DB_USERNAME=root \
           -e DB_PASSWORD=testpass \
           -e DB_HOST=127.0.0.1 \
           -e DB_NAME=testdb \
-          -e REDIS_HOST=127.0.0.1 \ 
+          -e REDIS_HOST=127.0.0.1 \
           flask-app:${{ github.sha }}
       - name: Wait for Flask to be ready
         run: sleep 10

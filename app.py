@@ -1,3 +1,4 @@
+import time
 import redis
 import json
 import os
@@ -36,6 +37,9 @@ class User(db.Model):
 with app.app_context():
     db.create_all()
 
+start_time = time.time()
+elapsed_time = round((time.time() - start_time)* 1000, 2)
+
 @app.route('/health')
 def health_check():
     return {"status":"Server is up and running"}, 200
@@ -48,7 +52,8 @@ def get_user(user_id):
     if cached_user:
         return jsonify({
             "source": "From Redis cache",
-            "data": json.loads(cached_user)
+            "data": json.loads(cached_user),
+            "response_time(in ms)": elapsed_time
         })
     user = User.query.get(user_id)
 
@@ -61,7 +66,8 @@ def get_user(user_id):
 
     return jsonify({
         "source": "From MySQL database",
-        "data": user_data
+        "data": user_data,
+        "response_time(in ms)": elapsed_time
     })
 
 @app.route('/addDummyUser')

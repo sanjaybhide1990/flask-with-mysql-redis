@@ -25,6 +25,10 @@ jobs:
           -e REDIS_HOST=localhost flask-app:${{ github.sha }}
       - name: Wait for container to be ready
         run: sleep 5
+      - name: Check if container is running
+        run: docker ps -a
+      - name: Debug the container logs
+        run: docker logs flask-test 
       - name: Health check
         run: | 
           curl --fail http://localhost:5000/health || exit 1

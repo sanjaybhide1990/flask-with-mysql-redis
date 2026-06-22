@@ -37,23 +37,22 @@ class User(db.Model):
 with app.app_context():
     db.create_all()
 
-start_time = time.time()
-elapsed_time = round((time.time() - start_time)* 1000, 2)
-
 @app.route('/health')
 def health_check():
     return {"status":"Server is up and running"}, 200
 
 @app.route('/user/<int:user_id>',methods= ["GET"])
 def get_user(user_id):
+    start_time = time.time()
     cache_key = f"user:{user_id}"
 
     cached_user = redis_client.get(cache_key)
     if cached_user:
+        elapsed_time_for_cache = round((time.time() - start_time)* 1000, 2)
         return jsonify({
             "source": "From Redis cache",
             "data": json.loads(cached_user),
-            "response_time(in ms)": elapsed_time
+            "response_time(in ms)": elapsed_time_for_cache
         })
     user = User.query.get(user_id)
 
@@ -64,10 +63,12 @@ def get_user(user_id):
 
     redis_client.set(cache_key, json.dumps(user_data), ex=120)
 
+    elapsed_time_for_db = round((time.time() - start_time)* 1000, 2)
+
     return jsonify({
         "source": "From MySQL database",
         "data": user_data,
-        "response_time(in ms)": elapsed_time
+        "response_time(in ms)": elapsed_time_for_db
     })
 
 @app.route('/addDummyUser')

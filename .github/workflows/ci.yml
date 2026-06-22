@@ -11,6 +11,28 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    services: 
+      mysql:
+        image: mysql:9.5.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: testdb
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+        ports:
+          - 3306:3306
+      redis:
+        image: redis:redis
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+        ports:
+          - 6379:6379
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,16 +41,16 @@ jobs:
           docker build -t flask-app:${{ github.sha }} .
       - name: Run container
         run: | 
-          docker run -d --name flask-test -p 5000:5000 \
-          -e DB_USERNAME=test -e DB_PASSWORD=test \
-          -e DB_HOST=localhost -e DB_NAME=test \
-          -e REDIS_HOST=localhost flask-app:${{ github.sha }}
-      - name: Wait for container to be ready
-        run: sleep 5
-      - name: Check if container is running
-        run: docker ps -a
-      - name: Debug the container logs
-        run: docker logs flask-test 
+          docker run -d --name flask-test \
+          --network host \
+          -e DB_USERNAME=root \ 
+          -e DB_PASSWORD=testpass \
+          -e DB_HOST=127.0.0.1 \
+          -e DB_NAME=testdb \
+          -e REDIS_HOST=127.0.0.1 \ 
+          flask-app:${{ github.sha }}
+      - name: Wait for Flask to be ready
+        run: sleep 10
       - name: Health check
         run: | 
           curl --fail http://localhost:5000/health || exit 1

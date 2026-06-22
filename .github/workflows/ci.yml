@@ -25,7 +25,7 @@ jobs:
         ports:
           - 3306:3306
       redis:
-        image: redis:redis
+        image: redis:alpine
         options: >-
           --health-cmd="redis-cli ping"
           --health-interval=10s

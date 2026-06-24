@@ -57,27 +57,37 @@ def get_user(user_id):
     start_time = time.time()
     cache_key = f"user:{user_id}"
 
-    cached_user = redis_client.get(cache_key)
-    if cached_user:
-        cache_hits.inc()
-        elapsed_time_for_cache = round((time.time() - start_time)* 1000, 2)
-        return jsonify({
+    try:
+        cached_user = redis_client.get(cache_key)
+        if cached_user:
+            cache_hits.inc()
+            elapsed_time_for_cache = round((time.time() - start_time)* 1000, 2)
+            app.logger.info("Time taken to fetch from cache: ",elapsed_time_for_cache)
+            app.logger.info("Data fetched from cache: ",cached_user)
+            
+            return jsonify({
             "source": "From Redis cache",
             "data": json.loads(cached_user),
             "response_time(in ms)": elapsed_time_for_cache
         })
-    cache_misses.inc()
+    except Exception:
+        app.logger.error("Redis is down")
+        cache_misses.inc()
 
     with db_query_duration.time():
         user = User.query.get(user_id)
     if user is None:
+        app.logger.error("User not found in the database")
         return jsonify({"error": "User not found"}), 404
 
     user_data = user.to_dict()
-    redis_client.set(cache_key, json.dumps(user_data), ex=120)
-    
+    try:
+        redis_client.set(cache_key, json.dumps(user_data), ex=120)
+    except Exception:
+        app.logger.error("Failed to write new data to Redis")
     elapsed_time_for_db = round((time.time() - start_time)* 1000, 2)
-
+    app.logger.info("Time taken to fetch from database: ",elapsed_time_for_db)
+    app.logger.info("Data fetched from database: ",user_data)
     return jsonify({
         "source": "From MySQL database",
         "data": user_data,

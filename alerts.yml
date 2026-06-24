@@ -1,0 +1,10 @@
+groups:
+  - name: flask-app
+    rules:
+      - alert: HighErrorRate
+        expr: rate(flask_http_request_duration_seconds_count{status=~"4..|5.."}[5m]) / rate(flask_http_request_duration_seconds_count[5m]) > 0.01
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error rate above 1% for 1 minute"

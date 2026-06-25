@@ -4,13 +4,15 @@ import json
 import os
 from flask import Flask, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
+from flask import g
 from dotenv import load_dotenv
 from prometheus_flask_exporter import PrometheusMetrics
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-
-app = Flask(__name__)
+from circuit_breaker import RedisCircuitBreaker
 
 load_dotenv()
+redis_cb = RedisCircuitBreaker(failure_threshold=3, cooldown_seconds=30)
+app = Flask(__name__)
 
 metrics = PrometheusMetrics(app,path=None)
 
@@ -35,6 +37,27 @@ redis_client = redis.Redis(host=REDIS_HOST,
                            socket_connect_timeout=0.1,
                            socket_timeout=0.1)
 
+#Adding circuit breaker logic
+def get_from_cache(key):
+    if redis_cb.is_open():
+        return None
+    try:
+        value = redis_client.get(key)
+        redis_cb.record_success()
+        return value
+    except Exception:
+        redis_cb.record_failure()
+        return None
+
+def set_in_cache(key, value, ttl=120):
+    if redis_cb.is_open():
+        return
+    try:
+        redis_client.set(key, value, ex=ttl)
+        redis_cb.record_success()
+    except Exception:
+        redis_cb.record_failure()
+
 class User(db.Model):
     __tablename__ = 'users'
 
@@ -48,54 +71,79 @@ class User(db.Model):
 with app.app_context():
     db.create_all()
 
+@app.before_request
+def start_timer():
+    g.start_time = time.time()
+
+@app.after_request
+def add_response_timing(response):
+    if hasattr(g, 'start_time'):
+        elapsed_ms = round((time.time() - g.start_time) * 1000, 2)
+        response.headers["X-Response-Time"] = f"{elapsed_ms}ms"
+    return response
+
 @app.route('/metrics')
 def metrics_endpoint():
     return Response(generate_latest(),mimetype=CONTENT_TYPE_LATEST)
 
-@app.route('/health')
-def health_check():
-    return {"status":"Server is up and running"}, 200
+@app.route('/health/live')
+def liveness():
+    return jsonify({"status": "ok"}), 200
+
+@app.route('/health/ready')
+def readiness():
+    checks = {}
+    status_code = 200
+    try:
+        db.session.execute(db.text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = "unavailable"
+        status_code = 503
+    try:
+        redis_client.ping()
+        checks["redis"] = "ok"
+    except Exception:
+        checks["redis"] = "degraded"
+    
+    return jsonify({"checks": checks}), status_code
 
 @app.route('/user/<int:user_id>',methods= ["GET"])
 def get_user(user_id):
-    start_time = time.time()
+    # start_time = time.time()
     cache_key = f"user:{user_id}"
 
-    try:
-        cached_user = redis_client.get(cache_key)
-        if cached_user:
-            cache_hits.inc()
-            elapsed_time_for_cache = round((time.time() - start_time)* 1000, 2)
-            app.logger.info("Time taken to fetch from cache: ",elapsed_time_for_cache)
-            app.logger.info("Data fetched from cache: ",cached_user)
-            
-            return jsonify({
+    cached_user = get_from_cache(cache_key)
+    if cached_user:
+        cache_hits.inc()
+        # elapsed_time_for_cache = round((time.time() - start_time)* 1000, 2)
+        # app.logger.info("Time taken to fetch from cache: %s ms",elapsed_time_for_cache)
+        app.logger.info("Cache hit for the key: %s", cache_key)
+        app.logger.info("Data fetched from cache: %s",cached_user)
+        
+        return jsonify({
             "source": "From Redis cache",
             "data": json.loads(cached_user),
-            "response_time(in ms)": elapsed_time_for_cache
+            # "response_time(in ms)": elapsed_time_for_cache
         })
-    except Exception:
-        app.logger.error("Redis is down")
-        cache_misses.inc()
+    
+    cache_misses.inc()
 
     with db_query_duration.time():
-        user = User.query.get(user_id)
+        user = db.session.get(User,user_id)
     if user is None:
-        app.logger.error("User not found in the database")
+        app.logger.error("User %s not found in the database",user_id)
         return jsonify({"error": "User not found"}), 404
 
     user_data = user.to_dict()
-    try:
-        redis_client.set(cache_key, json.dumps(user_data), ex=120)
-    except Exception:
-        app.logger.error("Failed to write new data to Redis")
-    elapsed_time_for_db = round((time.time() - start_time)* 1000, 2)
-    app.logger.info("Time taken to fetch from database: ",elapsed_time_for_db)
-    app.logger.info("Data fetched from database: ",user_data)
+    set_in_cache(cache_key, json.dumps(user_data))
+    
+    # elapsed_time_for_db = round((time.time() - start_time)* 1000, 2)
+    # app.logger.info("Time taken to fetch from database: %s ms",elapsed_time_for_db)
     return jsonify({
         "source": "From MySQL database",
-        "data": user_data,
-        "response_time(in ms)": elapsed_time_for_db
+        "data": user_data
+        # "response_time(in ms)": elapsed_time_for_db
     })
 
 @app.route('/addDummyUser')

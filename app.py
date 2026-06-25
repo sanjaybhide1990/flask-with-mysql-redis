@@ -29,7 +29,11 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 REDIS_HOST = os.environ.get("REDIS_HOST","localhost")
-redis_client = redis.Redis(host=REDIS_HOST,port=6379,decode_responses=True)
+redis_client = redis.Redis(host=REDIS_HOST,
+                           port=6379,
+                           decode_responses=True,
+                           socket_connect_timeout=0.1,
+                           socket_timeout=0.1)
 
 class User(db.Model):
     __tablename__ = 'users'

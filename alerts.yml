@@ -8,3 +8,17 @@ groups:
           severity: critical
         annotations:
           summary: "Error rate above 1% for 1 minute"
+      - alert: HighCacheHitDropRate
+        expr: rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) < 0.1 unless (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cache Hit Ratio drops below 0.1 for 30 seconds"
+      - alert: p95LatencyIsHigh
+        expr: histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "p95 latency is greater than 2 seconds for more than a minute"

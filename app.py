@@ -35,7 +35,9 @@ redis_client = redis.Redis(host=REDIS_HOST,
                            port=6379,
                            decode_responses=True,
                            socket_connect_timeout=0.1,
-                           socket_timeout=0.1)
+                           socket_timeout=0.1,
+                           retry_on_timeout=False,
+                           health_check_interval=10)
 
 #Adding circuit breaker logic
 def get_from_cache(key):

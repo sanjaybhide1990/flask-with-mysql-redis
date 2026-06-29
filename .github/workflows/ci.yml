@@ -94,6 +94,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
           script: |
             cd ${{ secrets.EC2_APP_DIR }}
 
@@ -105,7 +106,7 @@ jobs:
 
             IMAGE_TAG=${IMAGE_TAG} docker compose -f docker-compose-prod.yml up -d --remove-orphans
 
-            for i in {1..30};do
+            for i in {1..60};do
               curl -sf http://localhost/health/ready && break
               echo "Waiting... attempt $i"
               sleep 2

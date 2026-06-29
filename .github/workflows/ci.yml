@@ -50,7 +50,15 @@ jobs:
           -e REDIS_HOST=127.0.0.1 \
           flask-app:${{ github.sha }}
       - name: Wait for Flask to be ready
-        run: sleep 10
+        run: |
+          for i in {1..30}; do
+            curl -sf http://localhost:5000/health/ready && exit 0
+            echo "Waiting.. attempt $i"
+            sleep 2
+          done
+          echo "Flask never became ready"
+          docker logs flask-test
+          exit 1
       - name: Health check
         run: | 
           curl --fail http://localhost:5000/health/ready || exit 1
@@ -73,3 +81,37 @@ jobs:
           ghcr.io/${{ github.repository_owner }}/flask-app:latest
           docker push ghcr.io/${{ github.repository_owner }}/flask-app:${{ github.sha }}
           docker push ghcr.io/${{ github.repository_owner }}/flask-app:latest
+   
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads.main' && github.event_name == 'push'
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets. EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ${{ secrets.EC2_APP_DIR }}
+
+            echo "${{ secrets.GITHUB_TOKEN }}"
+            docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            export IMAGE_TAG=${{ github.sha }}
+            docker pull ghcr.io/${{ github.repository_owner }}/flask-app:${IMAGE_TAG}
+
+            IMAGE_TAG=${IMAGE_TAG} docker compose -f docker-compose-prod.yml up -d --remove-orphans
+
+            for i in {1..30};do
+              curl -sf http://localhost/health/ready && break
+              echo "Waiting... attempt $i"
+              sleep 2
+            done
+
+            curl --fail http://localhost/health/ready || exit 1
+            echo "Deployment successful - $(date)"
+
+            docker image prune -f

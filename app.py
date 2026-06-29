@@ -1,4 +1,5 @@
 import time
+import socket
 import redis
 import json
 import os
@@ -9,6 +10,8 @@ from dotenv import load_dotenv
 from prometheus_flask_exporter import PrometheusMetrics
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from circuit_breaker import RedisCircuitBreaker
+from redis.connection import Connection
+from redis import ConnectionPool
 
 load_dotenv()
 redis_cb = RedisCircuitBreaker(failure_threshold=3, cooldown_seconds=30)
@@ -18,7 +21,7 @@ metrics = PrometheusMetrics(app,path=None)
 
 cache_hits = Counter('cache_hits_total','Number of Redis cache hits')
 cache_misses = Counter('cache_misses_total','Number of Redis cache misses')
-db_query_duration = Histogram('db_query_duration_seconds','Time spent querying MySQL',buckets=[0.01,0.05,0.1,0.5,1.0,2.0])
+db_query_duration = Histogram('db_query_duration_seconds','Time spent querying MySQL',buckets=[0.001,0.005,0.01,0.05,0.1,0.5,1.0,2.0,5.0])
 
 DB_USER = os.environ.get("DB_USERNAME")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
@@ -27,17 +30,39 @@ DB_DATABASE_NAME = os.environ.get("DB_NAME")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOSTNAME}/{DB_DATABASE_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "pool_size": 10,
+    "max_overflow": 20,
+    "pool_pre_ping": True
+}
 
 db = SQLAlchemy(app)
+class FastTimeoutConnection(Connection):
+    def connect(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.1)
+        try:
+            sock.connect((self.host, self.port))
+        except socket.timeout:
+            sock.close()
+            raise redis.ConnectionError("Redis connection timed out")
+        self._sock = sock
+        self.on_connect()
 
 REDIS_HOST = os.environ.get("REDIS_HOST","localhost")
-redis_client = redis.Redis(host=REDIS_HOST,
-                           port=6379,
-                           decode_responses=True,
-                           socket_connect_timeout=0.1,
-                           socket_timeout=0.1,
-                           retry_on_timeout=False,
-                           health_check_interval=10)
+pool = ConnectionPool(connection_class=FastTimeoutConnection,
+                      host=REDIS_HOST,
+                      port=6379,
+                      decode_responses=True,
+                      retry_on_timeout=False,
+                      health_check_interval=10)
+redis_client = redis.Redis(connection_pool=pool)
+# redis_client = redis.Redis(host=REDIS_HOST,
+#                            port=6379,
+#                            decode_responses=True,
+#                            retry_on_timeout=False,
+#                            health_check_interval=10,
+#                            connection_class=FastTimeoutConnection)
 
 #Adding circuit breaker logic
 def get_from_cache(key):
